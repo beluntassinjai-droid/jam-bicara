@@ -31,9 +31,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private var runnable: Runnable? = null
     private var intervalMenit: Long = 0
     private var isUserSelecting = false
-    
-    // Cache untuk tanggal & tahun Hijriah dari internet
-    private var cacheHijriah: String = "3 Jumadil Awal 1448 H"
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
@@ -52,7 +49,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         })
         
         statusTextView = TextView(this).apply { 
-            text = "Memuat waktu sistem..."
+            text = "Memuat sistem..."
             textSize = 16f
             gravity = Gravity.CENTER
             setPadding(0, 20, 0, 30)
@@ -130,9 +127,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         setContentView(box)
 
         tts = TextToSpeech(this, this)
-        
-        // Tarik tanggal Hijriah via internet di latar belakang
-        muatHijriahViaInternet()
     }
 
     override fun onInit(status: Int) {
@@ -141,25 +135,35 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                 statusTextView.text = "Bahasa Indonesia tidak didukung di perangkat ini."
             } else {
-                ucapWaktuDanBaterai()
+                ucapWaktuDanSemuaData()
             }
         } else {
             statusTextView.text = "Gagal menginisialisasi suara."
         }
     }
 
-    private fun muatHijriahViaInternet() {
+    private fun ucapWaktuDanSemuaData() {
+        // 1. Ambil jam, menit, dan tanggal Masehi SEKETIKA dari sistem HP saat ini
         val calendar = Calendar.getInstance()
+        val jam = calendar.get(Calendar.HOUR_OF_DAY)
+        val menit = calendar.get(Calendar.MINUTE)
+        
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         val tanggalMasehi = dateFormat.format(calendar.time)
 
+        // 2. Ambil persentase baterai SEKETIKA dari sistem HP saat ini
+        val batteryIntent: Intent? = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val levelBaterai = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+
+        // 3. Tarik tanggal Hijriah online berdasarkan tanggal Masehi hari ini
         Thread {
+            var teksHijriah = "menyiapkan tanggal Hijriah"
             try {
                 val url = URL("https://api.myquran.com/v2/cal/hijr/$tanggalMasehi")
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
-                connection.connectTimeout = 5000
-                connection.readTimeout = 5000
+                connection.connectTimeout = 4000
+                connection.readTimeout = 4000
 
                 if (connection.responseCode == 200) {
                     val responseString = connection.inputStream.bufferedReader().use { it.readText() }
@@ -167,28 +171,20 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     if (jsonObject.getBoolean("status")) {
                         val dataObj = jsonObject.getJSONObject("data")
                         val dateArray = dataObj.getJSONArray("date")
-                        cacheHijriah = dateArray.getString(1)
+                        teksHijriah = dateArray.getString(1)
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
+
+            // Tampilkan dan ucapkan dengan data yang benar-benar segar (fresh)
+            runOnUiThread {
+                val infoTeks = "Sekarang pukul $jam lewat $menit menit. Tanggal $teksHijriah. Sisa baterai $levelBaterai persen."
+                statusTextView.text = infoTeks
+                tts.speak(infoTeks, TextToSpeech.QUEUE_FLUSH, null, null)
+            }
         }.start()
-    }
-
-    private fun ucapWaktuDanBaterai() {
-        // Mengambil waktu presisi langsung dari sistem lokal HP (sinkron dengan bar status)
-        val calendar = Calendar.getInstance()
-        val jam = calendar.get(Calendar.HOUR_OF_DAY)
-        val menit = calendar.get(Calendar.MINUTE)
-        
-        val batteryIntent: Intent? = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        val levelBaterai = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
-
-        val infoTeks = "Sekarang pukul $jam lewat $menit menit. Tanggal $cacheHijriah. Sisa baterai $levelBaterai persen."
-        
-        statusTextView.text = infoTeks
-        tts.speak(infoTeks, TextToSpeech.QUEUE_FLUSH, null, null)
     }
 
     private fun aturInterval(menit: Long) {
@@ -203,12 +199,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         statusTextView.text = "Interval diatur: Berbunyi setiap $menit menit."
         
-        // Langsung ucapkan waktu secara akurat detik itu juga saat interval diubah
-        ucapWaktuDanBaterai()
+        // Langsung ucapkan data presisi detik ini juga saat interval dipilih
+        ucapWaktuDanSemuaData()
 
         runnable = object : Runnable {
             override fun run() {
-                ucapWaktuDanBaterai()
+                ucapWaktuDanSemuaData()
                 handler.postDelayed(this, intervalMenit * 60 * 1000)
             }
         }
