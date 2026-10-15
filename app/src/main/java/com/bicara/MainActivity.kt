@@ -30,9 +30,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private val handler = Handler(Looper.getMainLooper())
     private var runnable: Runnable? = null
     private var intervalMenit: Long = 0
+    private var isUserSelecting = false
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
+        
+        // Layar dibiarkan normal (tidak dipaksa menyala terus)
         
         val box = LinearLayout(this).apply { 
             orientation = LinearLayout.VERTICAL
@@ -55,7 +58,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
         box.addView(statusTextView)
 
-        // Label petunjuk menu dropdown interval
         box.addView(TextView(this).apply {
             text = "Pilih Interval Waktu Berbunyi:"
             textSize = 14f
@@ -63,7 +65,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setPadding(0, 10, 0, 10)
         })
 
-        // Menu Dropdown (Spinner) untuk pilihan interval
         val spinnerInterval = Spinner(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -73,7 +74,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
         }
 
-        // Daftar pilihan interval
         val pilihanInterval = arrayOf(
             "Matikan Interval Otomatis",
             "Setiap 5 Menit",
@@ -94,9 +94,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         spinnerInterval.adapter = adapter
 
-        // Aksi ketika pilihan dropdown diubah
         spinnerInterval.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>, view: View?, position: Int, id: Long) {
+                if (!isUserSelecting) {
+                    isUserSelecting = true
+                    return
+                }
+
                 val menitDipilih = when (position) {
                     0 -> 0L
                     1 -> 5L
@@ -113,7 +117,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     12 -> 60L
                     else -> 0L
                 }
-                // Terapkan interval jika sudah diinisialisasi
                 if (::tts.isInitialized) {
                     aturInterval(menitDipilih)
                 }
@@ -125,7 +128,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         box.addView(spinnerInterval)
         setContentView(box)
 
-        // Inisialisasi suara (Text-to-Speech)
         tts = TextToSpeech(this, this)
     }
 
@@ -185,19 +187,18 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private fun aturInterval(menit: Long) {
-        // Jangan reset handler jika interval yang dipilih sama dengan yang sedang aktif
-        if (intervalMenit == menit) return
-        
         intervalMenit = menit
         handler.removeCallbacksAndMessages(null)
 
         if (menit == 0L) {
             statusTextView.text = "Interval otomatis dimatikan."
+            tts.speak("Interval otomatis dimatikan.", TextToSpeech.QUEUE_FLUSH, null, null)
             return
         }
 
         statusTextView.text = "Interval diatur: Berbunyi setiap $menit menit."
-        
+        tts.speak("Interval diatur setiap $menit menit.", TextToSpeech.QUEUE_FLUSH, null, null)
+
         runnable = object : Runnable {
             override fun run() {
                 ucapWaktuDanBaterai()
@@ -205,7 +206,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
         }
         
-        // Jadwalkan eksekusi berkala berikutnya
         handler.postDelayed(runnable!!, intervalMenit * 60 * 1000)
     }
 
