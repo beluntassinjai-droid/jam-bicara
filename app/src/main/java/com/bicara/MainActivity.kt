@@ -31,6 +31,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private var runnable: Runnable? = null
     private var intervalMenit: Long = 0
     private var isUserSelecting = false
+    
+    // Variabel untuk menyimpan cache tanggal Hijriah & tanggal Masehi terakhir pengecekan
+    private var cachedTanggalMasehi: String = ""
+    private var cachedHijriah: String = "Memuat Tanggal Hijriah..."
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
@@ -135,56 +139,66 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                 statusTextView.text = "Bahasa Indonesia tidak didukung di perangkat ini."
             } else {
-                ucapWaktuDanSemuaData()
+                cekDanUcapkanWaktu()
             }
         } else {
             statusTextView.text = "Gagal menginisialisasi suara."
         }
     }
 
-    private fun ucapWaktuDanSemuaData() {
-        // 1. Ambil jam, menit, dan tanggal Masehi SEKETIKA dari sistem HP saat ini
+    private fun cekDanUcapkanWaktu() {
         val calendar = Calendar.getInstance()
         val jam = calendar.get(Calendar.HOUR_OF_DAY)
         val menit = calendar.get(Calendar.MINUTE)
         
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        val tanggalMasehi = dateFormat.format(calendar.time)
+        val tanggalMasehiHariIni = dateFormat.format(calendar.time)
 
-        // 2. Ambil persentase baterai SEKETIKA dari sistem HP saat ini
         val batteryIntent: Intent? = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val levelBaterai = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
 
-        // 3. Tarik tanggal Hijriah online berdasarkan tanggal Masehi hari ini
-        Thread {
-            var teksHijriah = "menyiapkan tanggal Hijriah"
-            try {
-                val url = URL("https://api.myquran.com/v2/cal/hijr/$tanggalMasehi")
-                val connection = url.openConnection() as HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.connectTimeout = 4000
-                connection.readTimeout = 4000
+        // Jika tanggal Masehi berubah (atau baru pertama kali dibuka), ambil data Hijriah dari internet sekali saja
+        if (cachedTanggalMasehi != tanggalMasehiHariIni) {
+            Thread {
+                try {
+                    val url = URL("https://api.myquran.com/v2/cal/hijr/$tanggalMasehiHariIni")
+                    val connection = url.openConnection() as HttpURLConnection
+                    connection.requestMethod = "GET"
+                    connection.connectTimeout = 4000
+                    connection.readTimeout = 4000
 
-                if (connection.responseCode == 200) {
-                    val responseString = connection.inputStream.bufferedReader().use { it.readText() }
-                    val jsonObject = JSONObject(responseString)
-                    if (jsonObject.getBoolean("status")) {
-                        val dataObj = jsonObject.getJSONObject("data")
-                        val dateArray = dataObj.getJSONArray("date")
-                        teksHijriah = dateArray.getString(1)
+                    if (connection.responseCode == 200) {
+                        val responseString = connection.inputStream.bufferedReader().use { it.readText() }
+                        val jsonObject = JSONObject(responseString)
+                        if (jsonObject.getBoolean("status")) {
+                            val dataObj = jsonObject.getJSONObject("data")
+                            val dateArray = dataObj.getJSONArray("date")
+                            cachedHijriah = dateArray.getString(1)
+                            cachedTanggalMasehi = tanggalMasehiHariIni
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    if (cachedHijriah.startsWith("Memuat")) {
+                        cachedHijriah = "tanggal Hijriah"
                     }
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
 
-            // Tampilkan dan ucapkan dengan data yang benar-benar segar (fresh)
-            runOnUiThread {
-                val infoTeks = "Sekarang pukul $jam lewat $menit menit. Tanggal $teksHijriah. Sisa baterai $levelBaterai persen."
-                statusTextView.text = infoTeks
-                tts.speak(infoTeks, TextToSpeech.QUEUE_FLUSH, null, null)
-            }
-        }.start()
+                // Jalankan pengumuman suara setelah cache siap
+                runOnUiThread {
+                    tampilkanDanUcapkan(jam, menit, cachedHijriah, levelBaterai)
+                }
+            }.start()
+        } else {
+            // Jika hari masih sama, langsung gunakan cache Hijriah tanpa menyentuh internet (Super Cepat & Akurat!)
+            tampilkanDanUcapkan(jam, menit, cachedHijriah, levelBaterai)
+        }
+    }
+
+    private fun tampilkanDanUcapkan(jam: Int, menit: Int, teksHijriah: String, levelBaterai: Int) {
+        val infoTeks = "Sekarang pukul $jam lewat $menit menit. Tanggal $teksHijriah. Sisa baterai $levelBaterai persen."
+        statusTextView.text = infoTeks
+        tts.speak(infoTeks, TextToSpeech.QUEUE_FLUSH, null, null)
     }
 
     private fun aturInterval(menit: Long) {
@@ -199,17 +213,16 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         statusTextView.text = "Interval diatur: Berbunyi setiap $menit menit."
         
-        // Langsung ucapkan data presisi detik ini juga saat interval dipilih
-        ucapWaktuDanSemuaData()
+        // Panggil langsung detik ini juga saat interval diubah
+        cekDanUcapkanWaktu()
 
         runnable = object : Runnable {
             override fun run() {
-                ucapWaktuDanSemuaData()
+                cekDanUcapkanWaktu()
                 handler.postDelayed(this, intervalMenit * 60 * 1000)
             }
         }
         
-        // Jadwalkan siklus interval berikutnya
         handler.postDelayed(runnable!!, intervalMenit * 60 * 1000)
     }
 
