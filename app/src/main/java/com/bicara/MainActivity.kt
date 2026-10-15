@@ -27,7 +27,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private lateinit var tts: TextToSpeech
     private lateinit var statusTextView: TextView
-    private val handler = Handler(Looper.getMainLocate() ?: Looper.getMainLooper())
+    private val handler = Handler(Looper.getMainLooper())
     private var runnable: Runnable? = null
     private var intervalMenit: Long = 0
     private var isUserSelecting = false
@@ -177,7 +177,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private fun ucapWaktuDanBaterai() {
-        // Mengambil waktu langsung persis dari sistem lokal HP (sesuai bar status)
+        // Mengambil waktu presisi langsung dari sistem lokal HP (sinkron dengan bar status)
         val calendar = Calendar.getInstance()
         val jam = calendar.get(Calendar.HOUR_OF_DAY)
         val menit = calendar.get(Calendar.MINUTE)
@@ -203,7 +203,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         statusTextView.text = "Interval diatur: Berbunyi setiap $menit menit."
         
-        // Langsung ucapkan waktu secara presisi detik itu juga saat interval diubah
+        // Langsung ucapkan waktu secara akurat detik itu juga saat interval diubah
         ucapWaktuDanBaterai()
 
         runnable = object : Runnable {
