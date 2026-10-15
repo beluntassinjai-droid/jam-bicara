@@ -27,13 +27,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private lateinit var tts: TextToSpeech
     private lateinit var statusTextView: TextView
-    private val handler = Handler(Looper.getMainLooper())
+    private val handler = Handler(Looper.getMainLocate() ?: Looper.getMainLooper())
     private var runnable: Runnable? = null
     private var intervalMenit: Long = 0
     private var isUserSelecting = false
     
     // Cache untuk tanggal & tahun Hijriah dari internet
-    private var cacheHijriah: String = "menyiapkan tanggal Hijriah"
+    private var cacheHijriah: String = "3 Jumadil Awal 1448 H"
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
@@ -52,7 +52,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         })
         
         statusTextView = TextView(this).apply { 
-            text = "Memuat sistem waktu lokal..."
+            text = "Memuat waktu sistem..."
             textSize = 16f
             gravity = Gravity.CENTER
             setPadding(0, 20, 0, 30)
@@ -131,7 +131,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         tts = TextToSpeech(this, this)
         
-        // Tarik tanggal dan tahun Hijriah via internet di latar belakang secara terpisah
+        // Tarik tanggal Hijriah via internet di latar belakang
         muatHijriahViaInternet()
     }
 
@@ -167,8 +167,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     if (jsonObject.getBoolean("status")) {
                         val dataObj = jsonObject.getJSONObject("data")
                         val dateArray = dataObj.getJSONArray("date")
-                        // Contoh hasil: "3 Jumadil Awal 1448 H"
-                        cacheHijriah = dateArray.getString(1) 
+                        cacheHijriah = dateArray.getString(1)
                     }
                 }
             } catch (e: Exception) {
@@ -178,7 +177,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private fun ucapWaktuDanBaterai() {
-        // Jam, menit, dan baterai murni diambil dari sistem HP secara instan tanpa menunggu internet
+        // Mengambil waktu langsung persis dari sistem lokal HP (sesuai bar status)
         val calendar = Calendar.getInstance()
         val jam = calendar.get(Calendar.HOUR_OF_DAY)
         val menit = calendar.get(Calendar.MINUTE)
@@ -203,7 +202,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
 
         statusTextView.text = "Interval diatur: Berbunyi setiap $menit menit."
-        tts.speak("Interval diatur setiap $menit menit.", TextToSpeech.QUEUE_FLUSH, null, null)
+        
+        // Langsung ucapkan waktu secara presisi detik itu juga saat interval diubah
+        ucapWaktuDanBaterai()
 
         runnable = object : Runnable {
             override fun run() {
@@ -212,6 +213,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
         }
         
+        // Jadwalkan siklus interval berikutnya
         handler.postDelayed(runnable!!, intervalMenit * 60 * 1000)
     }
 
