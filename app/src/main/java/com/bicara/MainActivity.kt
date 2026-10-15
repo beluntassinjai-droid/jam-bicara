@@ -10,9 +10,11 @@ import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.view.Gravity
-import android.widget.Button
+import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.LinearLayout
-import android.widget.ScrollView
+import android.widget.Spinner
 import android.widget.TextView
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -32,14 +34,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         
-        // Buat ScrollView agar semua tombol pilihan interval bisa digulir ke bawah
-        val scrollView = ScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.MATCH_PARENT
-            )
-        }
-
         val box = LinearLayout(this).apply { 
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -61,35 +55,78 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
         box.addView(statusTextView)
 
-        // Tombol Matikan Interval
-        box.addView(buatTombol("Matikan Interval Otomatis", Color.parseColor("#D32F2F")) { aturInterval(0) })
+        // Label petunjuk menu dropdown interval
+        box.addView(TextView(this).apply {
+            text = "Pilih Interval Waktu Berbunyi:"
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setPadding(0, 10, 0, 10)
+        })
 
-        // Daftar pilihan interval kelipatan 5 menit (dari 5 hingga 60 menit)
-        val daftarMenit = intArrayOf(5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60)
-        for (m in daftarMenit) {
-            box.addView(buatTombol("Bunyi Setiap $m Menit") { aturInterval(m.toLong()) })
+        // Menu Dropdown (Spinner) untuk pilihan interval
+        val spinnerInterval = Spinner(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 10, 0, 20)
+            }
         }
-        
-        scrollView.addView(box)
-        setContentView(scrollView)
+
+        // Daftar pilihan interval
+        val pilihanInterval = arrayOf(
+            "Matikan Interval Otomatis",
+            "Setiap 5 Menit",
+            "Setiap 10 Menit",
+            "Setiap 15 Menit",
+            "Setiap 20 Menit",
+            "Setiap 25 Menit",
+            "Setiap 30 Menit",
+            "Setiap 35 Menit",
+            "Setiap 40 Menit",
+            "Setiap 45 Menit",
+            "Setiap 50 Menit",
+            "Setiap 55 Menit",
+            "Setiap 60 Menit"
+        )
+
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, pilihanInterval)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinnerInterval.adapter = adapter
+
+        // Aksi ketika pilihan dropdown diubah
+        spinnerInterval.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>, view: View?, position: Int, id: Long) {
+                val menitDipilih = when (position) {
+                    0 -> 0L
+                    1 -> 5L
+                    2 -> 10L
+                    3 -> 15L
+                    4 -> 20L
+                    5 -> 25L
+                    6 -> 30L
+                    7 -> 35L
+                    8 -> 40L
+                    9 -> 45L
+                    10 -> 50L
+                    11 -> 55L
+                    12 -> 60L
+                    else -> 0L
+                }
+                // Terapkan interval jika sudah diinisialisasi
+                if (::tts.isInitialized) {
+                    aturInterval(menitDipilih)
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>) {}
+        }
+
+        box.addView(spinnerInterval)
+        setContentView(box)
 
         // Inisialisasi suara (Text-to-Speech)
         tts = TextToSpeech(this, this)
-    }
-
-    private fun buatTombol(teks: String, warnaBg: Int = Color.parseColor("#1976D2"), onClick: () -> Unit): Button {
-        return Button(this).apply {
-            text = teks
-            setTextColor(Color.WHITE)
-            setBackgroundColor(warnaBg)
-            setOnClickListener { onClick() }
-            val params = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            params.setMargins(0, 8, 0, 8)
-            layoutParams = params
-        }
     }
 
     override fun onInit(status: Int) {
@@ -98,27 +135,24 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                 statusTextView.text = "Bahasa Indonesia tidak didukung di perangkat ini."
             } else {
-                ucapWaktuHijriahDanBaterai()
+                ucapWaktuDanBaterai()
             }
         } else {
             statusTextView.text = "Gagal menginisialisasi suara."
         }
     }
 
-    private fun ucapWaktuHijriahDanBaterai() {
+    private fun ucapWaktuDanBaterai() {
         val calendar = Calendar.getInstance()
         val jam = calendar.get(Calendar.HOUR_OF_DAY)
         val menit = calendar.get(Calendar.MINUTE)
         
-        // Format tanggal Masehi hari ini (YYYY-MM-DD)
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         val tanggalMasehi = dateFormat.format(calendar.time)
 
-        // Mendapatkan status sisa baterai
         val batteryIntent: Intent? = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val levelBaterai = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
 
-        // Menjalankan proses jaringan di latar belakang (Background Thread) untuk mengambil tanggal Hijriah online
         Thread {
             var teksHijriah = "tanggal Hijriah"
             try {
@@ -140,10 +174,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                teksHijriah = "gagal memuat tanggal Hijriah online"
             }
 
-            // Kembali ke UI Thread untuk menampilkan dan membacakan teks lengkap
             runOnUiThread {
                 val infoTeks = "Sekarang pukul $jam lewat $menit menit. Tanggal $teksHijriah. Sisa baterai $levelBaterai persen."
                 statusTextView.text = infoTeks
@@ -153,18 +185,19 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private fun aturInterval(menit: Long) {
+        // Jangan reset handler jika interval yang dipilih sama dengan yang sedang aktif
+        if (intervalMenit == menit) return
+        
         intervalMenit = menit
         handler.removeCallbacksAndMessages(null)
 
         if (menit == 0L) {
             statusTextView.text = "Interval otomatis dimatikan."
-            tts.speak("Interval otomatis dimatikan.", TextToSpeech.QUEUE_FLUSH, null, null)
             return
         }
 
         statusTextView.text = "Interval diatur: Berbunyi setiap $menit menit."
-        tts.speak("Interval diatur setiap $menit menit.", TextToSpeech.QUEUE_FLUSH, null, null)
-
+        
         runnable = object : Runnable {
             override fun run() {
                 ucapWaktuDanBaterai()
@@ -172,7 +205,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
         }
         
-        // Mulai hitung mundur pertama kali
+        // Jadwalkan eksekusi berkala berikutnya
         handler.postDelayed(runnable!!, intervalMenit * 60 * 1000)
     }
 
