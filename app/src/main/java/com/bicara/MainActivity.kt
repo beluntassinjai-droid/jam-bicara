@@ -113,7 +113,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }.start()
     }
 
-    override onDestroy() {
+    override fun onDestroy() {
         if (::tts.isInitialized) {
             tts.stop()
             tts.shutdown()
