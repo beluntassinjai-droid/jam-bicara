@@ -31,11 +31,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private var runnable: Runnable? = null
     private var intervalMenit: Long = 0
     private var isUserSelecting = false
+    
+    // Cache untuk tanggal & tahun Hijriah dari internet
+    private var cacheHijriah: String = "menyiapkan tanggal Hijriah"
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
-        
-        // Layar dibiarkan normal (tidak dipaksa menyala terus)
         
         val box = LinearLayout(this).apply { 
             orientation = LinearLayout.VERTICAL
@@ -51,7 +52,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         })
         
         statusTextView = TextView(this).apply { 
-            text = "Memuat waktu, Hijriah, dan baterai..."
+            text = "Memuat sistem waktu lokal..."
             textSize = 16f
             gravity = Gravity.CENTER
             setPadding(0, 20, 0, 30)
@@ -129,6 +130,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         setContentView(box)
 
         tts = TextToSpeech(this, this)
+        
+        // Tarik tanggal dan tahun Hijriah via internet di latar belakang secara terpisah
+        muatHijriahViaInternet()
     }
 
     override fun onInit(status: Int) {
@@ -144,19 +148,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
     }
 
-    private fun ucapWaktuDanBaterai() {
+    private fun muatHijriahViaInternet() {
         val calendar = Calendar.getInstance()
-        val jam = calendar.get(Calendar.HOUR_OF_DAY)
-        val menit = calendar.get(Calendar.MINUTE)
-        
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         val tanggalMasehi = dateFormat.format(calendar.time)
 
-        val batteryIntent: Intent? = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        val levelBaterai = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
-
         Thread {
-            var teksHijriah = "tanggal Hijriah"
             try {
                 val url = URL("https://api.myquran.com/v2/cal/hijr/$tanggalMasehi")
                 val connection = url.openConnection() as HttpURLConnection
@@ -167,23 +164,32 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 if (connection.responseCode == 200) {
                     val responseString = connection.inputStream.bufferedReader().use { it.readText() }
                     val jsonObject = JSONObject(responseString)
-                    val status = jsonObject.getBoolean("status")
-                    if (status) {
+                    if (jsonObject.getBoolean("status")) {
                         val dataObj = jsonObject.getJSONObject("data")
                         val dateArray = dataObj.getJSONArray("date")
-                        teksHijriah = dateArray.getString(1)
+                        // Contoh hasil: "3 Jumadil Awal 1448 H"
+                        cacheHijriah = dateArray.getString(1) 
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
-
-            runOnUiThread {
-                val infoTeks = "Sekarang pukul $jam lewat $menit menit. Tanggal $teksHijriah. Sisa baterai $levelBaterai persen."
-                statusTextView.text = infoTeks
-                tts.speak(infoTeks, TextToSpeech.QUEUE_FLUSH, null, null)
-            }
         }.start()
+    }
+
+    private fun ucapWaktuDanBaterai() {
+        // Jam, menit, dan baterai murni diambil dari sistem HP secara instan tanpa menunggu internet
+        val calendar = Calendar.getInstance()
+        val jam = calendar.get(Calendar.HOUR_OF_DAY)
+        val menit = calendar.get(Calendar.MINUTE)
+        
+        val batteryIntent: Intent? = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val levelBaterai = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+
+        val infoTeks = "Sekarang pukul $jam lewat $menit menit. Tanggal $cacheHijriah. Sisa baterai $levelBaterai persen."
+        
+        statusTextView.text = infoTeks
+        tts.speak(infoTeks, TextToSpeech.QUEUE_FLUSH, null, null)
     }
 
     private fun aturInterval(menit: Long) {
